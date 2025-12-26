@@ -6,14 +6,28 @@ import type { Applicant } from "@/types";
 
 export const runtime = "edge";
 
-const index = new Index({
-  url: process.env.UPSTASH_VECTOR_REST_URL as string,
-  token: process.env.UPSTASH_VECTOR_REST_TOKEN as string,
-});
+// Lazy initialization to avoid build-time errors
+let _index: Index | null = null;
+let _openai: OpenAI | null = null;
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+function getIndex() {
+  if (!_index) {
+    _index = new Index({
+      url: process.env.UPSTASH_VECTOR_REST_URL || "",
+      token: process.env.UPSTASH_VECTOR_REST_TOKEN || "",
+    });
+  }
+  return _index;
+}
+
+function getOpenAI() {
+  if (!_openai) {
+    _openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY || "",
+    });
+  }
+  return _openai;
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -23,7 +37,7 @@ export async function POST(req: NextRequest) {
   console.log("PIPELINE: Fetching OpenAI Parsing Response");
 
   const userMessage = `MAIL_SUBJECT\n${mailData.mailSubject}\n\nMAIL_FROM\n${mailData.mailFrom}\n\nMAIL_BODY\n${mailData.mailBody}\n\nRESUME_TEXT\n${mailData.resumeText}`;
-  const completion = await openai.chat.completions.create({
+  const completion = await getOpenAI().chat.completions.create({
     messages: [
       {
         role: "system",
@@ -57,7 +71,7 @@ export async function POST(req: NextRequest) {
     notes: "",
   };
 
-  await index.upsert({
+  await getIndex().upsert({
     id: applicant.id,
     data: `RESUME: ${mailData.resumeText}\n\nCOVER_LETTER: ${applicant.coverLetter}`,
     metadata: applicant,
